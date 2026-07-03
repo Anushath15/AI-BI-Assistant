@@ -1,77 +1,107 @@
-from models.analysis_command import AnalysisCommand
+import json
+import logging
+from typing import Optional
+from pydantic import ValidationError
+
+from models.execution_plan import ExecutionPlan
+from models.dataset_profile import DatasetProfile
+
+logger = logging.getLogger(__name__)
+
+
+class ValidationResult:
+    def __init__(
+        self,
+        success: bool,
+        plan: Optional[ExecutionPlan] = None,
+        error: Optional[str] = None,
+    ):
+        self.success = success
+        self.plan = plan
+        self.error = error
+
+    def __iter__(self):
+        if self.success:
+            yield self.success
+            yield self.plan
+        else:
+            yield self.success
+            yield self.error
 
 
 class CommandValidator:
-    """
-    Validates AI-generated analysis commands before execution.
-    """
 
-    ALLOWED_OPERATIONS = {
-        "groupby",
-        "aggregate",
-        "filter",
-        "sort",
-        "top_n",
-        "bottom_n",
-        "time_series",
-        "compare",
-        "distribution"
-    }
+    def validate(
+        self,
+        raw_response: str,
+        profile: DatasetProfile,
+    ) -> ValidationResult:
 
-    ALLOWED_AGGREGATIONS = {
-        "sum",
-        "mean",
-        "count",
-        "min",
-        "max",
-        "median"
-    }
+        # Step 1: Strip markdown fences if model added them
+        cleaned = raw_response.strip()
+        if cleaned.startswith("```"):
+            lines = cleaned.split("\n")
+            cleaned = "\n".join(lines[1:-1]).strip()
 
-    ALLOWED_CHARTS = {
-        "bar",
-        "line",
-        "pie",
-        "scatter",
-        "histogram",
-        "table"
-    }
-
-    def validate(self, command: AnalysisCommand, profile):
-
-        errors = []
-
-        # Validate operation
-        if command.operation not in self.ALLOWED_OPERATIONS:
-            errors.append(
-                f"Unsupported operation: {command.operation}"
+        # Step 2: Parse JSON
+        try:
+            data = json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            return ValidationResult(
+                success=False,
+                error=f"AI returned invalid JSON: {e}",
             )
 
-        # Validate group_by column
-        if command.group_by:
-            if command.group_by not in profile["column_names"]:
-                errors.append(
-                    f"Unknown column: {command.group_by}"
+        # Step 3: Validate structure with Pydantic
+        try:
+            plan = ExecutionPlan.model_validate(data)
+        except ValidationError as e:
+            errors = e.errors()
+            msg = errors[0]["msg"] if errors else str(e)
+            return ValidationResult(
+                success=False,
+                error=f"Invalid execution plan structure: {msg}",
+            )
+
+        # Step 4: Validate column names against actual dataset
+        valid_columns = set(profile.column_names)
+        numeric_columns = set(profile.numeric_columns)
+
+        for i, step in enumerate(plan.steps):
+
+            if step.column and step.column not in valid_columns:
+                return ValidationResult(
+                    success=False,
+                    error=(
+                        f"Step {i+1} references unknown column "
+                        f"'{step.column}'. "
+                        f"Available columns: {sorted(valid_columns)}"
+                    ),
                 )
 
-        # Validate metric column
-        if command.metric:
-            if command.metric not in profile["column_names"]:
-                errors.append(
-                    f"Unknown metric: {command.metric}"
+            if step.metric and step.metric not in valid_columns:
+                return ValidationResult(
+                    success=False,
+                    error=(
+                        f"Step {i+1} references unknown metric "
+                        f"'{step.metric}'. "
+                        f"Available columns: {sorted(valid_columns)}"
+                    ),
                 )
 
-        # Validate aggregation
-        if command.aggregation:
-            if command.aggregation not in self.ALLOWED_AGGREGATIONS:
-                errors.append(
-                    f"Unsupported aggregation: {command.aggregation}"
+            if step.metric and step.metric not in numeric_columns:
+                return ValidationResult(
+                    success=False,
+                    error=(
+                        f"Step {i+1} metric '{step.metric}' is not numeric. "
+                        f"Numeric columns: {sorted(numeric_columns)}"
+                    ),
                 )
 
-        # Validate chart
-        if command.chart:
-            if command.chart not in self.ALLOWED_CHARTS:
-                errors.append(
-                    f"Unsupported chart: {command.chart}"
-                )
+        logger.info(
+            "ExecutionPlan validated: %d steps, chart=%s",
+            len(plan.steps),
+            plan.visualization.chart_type,
+        )
 
-        return len(errors) == 0, errors
+        return ValidationResult(success=True, plan=plan)
