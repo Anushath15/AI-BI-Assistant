@@ -12,7 +12,6 @@ from core.command_validator import CommandValidator
 from core.analysis_engine import AnalysisEngine
 from core.chart_engine import ChartEngine
 from core.explanation_engine import ExplanationEngine
-from models.dataset_profile import DatasetProfile
 
 load_dotenv()
 
@@ -55,8 +54,7 @@ with st.sidebar:
             st.error(result)
         else:
             df, report = DataCleaner().clean(result)
-            raw_profile = DataProfiler().profile(df)
-            profile = DatasetProfile(**raw_profile)
+            profile = DataProfiler().profile(df)
 
             st.session_state.df = df
             st.session_state.profile = profile
