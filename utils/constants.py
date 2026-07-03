@@ -1,15 +1,16 @@
 SUPPORTED_OPERATIONS = [
-    "aggregate",
-    "groupby",
-    "compare",
     "filter",
+    "group_by",
+    "aggregate",
     "sort",
-    "top_n",
-    "bottom_n",
+    "limit",
     "time_series",
     "distribution",
     "correlation",
-    "kpi"
+    "kpi",
+    "top_n",
+    "bottom_n",
+    "compare",
 ]
 
 SUPPORTED_AGGREGATIONS = [
@@ -19,7 +20,7 @@ SUPPORTED_AGGREGATIONS = [
     "min",
     "max",
     "median",
-    "std"
+    "std",
 ]
 
 SUPPORTED_CHARTS = [
@@ -29,7 +30,7 @@ SUPPORTED_CHARTS = [
     "scatter",
     "histogram",
     "box",
-    "table"
+    "table",
 ]
 
 SUPPORTED_FILTER_OPERATORS = [
@@ -41,5 +42,7 @@ SUPPORTED_FILTER_OPERATORS = [
     "<=",
     "contains",
     "startswith",
-    "endswith"
+    "endswith",
+    "year_equals",
+    "month_equals",
 ]

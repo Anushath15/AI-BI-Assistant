@@ -1,40 +1,57 @@
-from dataclasses import dataclass
-from typing import Optional, Any
+from typing import Any, Optional
+from pydantic import BaseModel, field_validator
+
+from utils.constants import (
+    SUPPORTED_OPERATIONS,
+    SUPPORTED_AGGREGATIONS,
+    SUPPORTED_FILTER_OPERATORS,
+)
 
 
-@dataclass
-class AnalysisStep:
-    """
-    Represents a single executable analysis step.
+class AnalysisStep(BaseModel):
 
-    Example:
-        Filter rows
-        Group by Category
-        Aggregate Sales
-        Sort descending
-        Limit top 10
-    """
-
-    # Name of the operation
     operation: str
-
-    # Column involved in the operation
     column: Optional[str] = None
-
-    # Metric column (e.g., Sales, Profit)
     metric: Optional[str] = None
-
-    # Aggregation method (sum, mean, count...)
     aggregation: Optional[str] = None
-
-    # Filter operator (=, >, <, contains...)
     operator: Optional[str] = None
-
-    # Filter value
     value: Optional[Any] = None
-
-    # Sort order
     order: Optional[str] = None
+    n: Optional[int] = None
 
-    # Extra parameters for future extensions
-    parameters: Optional[dict] = None
+    @field_validator("operation")
+    @classmethod
+    def operation_must_be_supported(cls, v):
+        if v not in SUPPORTED_OPERATIONS:
+            raise ValueError(
+                f"Unsupported operation '{v}'. "
+                f"Allowed: {SUPPORTED_OPERATIONS}"
+            )
+        return v
+
+    @field_validator("aggregation")
+    @classmethod
+    def aggregation_must_be_supported(cls, v):
+        if v is not None and v not in SUPPORTED_AGGREGATIONS:
+            raise ValueError(
+                f"Unsupported aggregation '{v}'. "
+                f"Allowed: {SUPPORTED_AGGREGATIONS}"
+            )
+        return v
+
+    @field_validator("operator")
+    @classmethod
+    def operator_must_be_supported(cls, v):
+        if v is not None and v not in SUPPORTED_FILTER_OPERATORS:
+            raise ValueError(
+                f"Unsupported filter operator '{v}'. "
+                f"Allowed: {SUPPORTED_FILTER_OPERATORS}"
+            )
+        return v
+
+    @field_validator("order")
+    @classmethod
+    def order_must_be_valid(cls, v):
+        if v is not None and v not in ("ascending", "descending"):
+            raise ValueError("order must be 'ascending' or 'descending'")
+        return v
