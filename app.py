@@ -12,12 +12,9 @@ from core.command_validator import CommandValidator
 from core.analysis_engine import AnalysisEngine
 from core.chart_engine import ChartEngine
 from core.explanation_engine import ExplanationEngine
+from core.session_manager import SessionManager, ChatEntry
 
 load_dotenv()
-
-# ------------------------------------------------------------------
-# Page config
-# ------------------------------------------------------------------
 
 st.set_page_config(
     page_title="AI BI Assistant",
@@ -33,11 +30,11 @@ if "df" not in st.session_state:
     st.session_state.df = None
 if "profile" not in st.session_state:
     st.session_state.profile = None
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+if "session" not in st.session_state:
+    st.session_state.session = SessionManager()
 
 # ------------------------------------------------------------------
-# Sidebar — upload
+# Sidebar
 # ------------------------------------------------------------------
 
 with st.sidebar:
@@ -53,11 +50,12 @@ with st.sidebar:
         if not success:
             st.error(result)
         else:
-            df, report = DataCleaner().clean(result)
+            df, _ = DataCleaner().clean(result)
             profile = DataProfiler().profile(df)
 
             st.session_state.df = df
             st.session_state.profile = profile
+            st.session_state.session = SessionManager()
 
             st.success(f"Loaded {profile.rows:,} rows × {profile.columns} columns")
             st.divider()
@@ -67,7 +65,7 @@ with st.sidebar:
                 st.caption(f"• {col}")
 
             if st.button("Clear Chat"):
-                st.session_state.chat_history = []
+                st.session_state.session.clear()
                 st.rerun()
 
 # ------------------------------------------------------------------
@@ -85,24 +83,24 @@ if st.session_state.df is None:
 # Chat history display
 # ------------------------------------------------------------------
 
-for entry in st.session_state.chat_history:
+for entry in st.session_state.session.get_history():
     with st.chat_message("user"):
-        st.write(entry["question"])
+        st.write(entry.question)
 
     with st.chat_message("assistant"):
-        if entry.get("error"):
-            st.error(entry["error"])
+        if entry.error:
+            st.error(entry.error)
         else:
-            if entry.get("figure"):
-                st.plotly_chart(entry["figure"], use_container_width=True)
-            if entry.get("data"):
+            if entry.figure:
+                st.plotly_chart(entry.figure, use_container_width=True)
+            if entry.data:
                 with st.expander("View Data Table"):
                     st.dataframe(
-                        pd.DataFrame(entry["data"]),
+                        pd.DataFrame(entry.data),
                         use_container_width=True,
                     )
-            if entry.get("explanation"):
-                st.markdown(entry["explanation"])
+            if entry.explanation:
+                st.markdown(entry.explanation)
 
 # ------------------------------------------------------------------
 # Chat input
@@ -120,53 +118,43 @@ if question:
                 profile = st.session_state.profile
                 df = st.session_state.df
 
-                # Step 1: Build prompt and get execution plan
                 sp, up = PromptBuilder().build(profile, question)
                 raw = AIClient().ask(sp, up)
 
-                # Step 2: Validate plan
                 ok, plan_or_error = CommandValidator().validate(raw, profile)
                 if not ok:
-                    st.error(f"Planning error: {plan_or_error}")
-                    st.session_state.chat_history.append({
-                        "question": question,
-                        "error": f"Planning error: {plan_or_error}",
-                    })
+                    entry = ChatEntry(question=question, error=f"Planning error: {plan_or_error}")
+                    st.session_state.session.add(entry)
+                    st.error(entry.error)
                     st.stop()
 
-                # Step 3: Execute plan
                 result = AnalysisEngine().execute(df, plan_or_error, question)
                 if not result.success:
-                    st.error(result.error)
-                    st.session_state.chat_history.append({
-                        "question": question,
-                        "error": result.error,
-                    })
+                    entry = ChatEntry(question=question, error=result.error)
+                    st.session_state.session.add(entry)
+                    st.error(entry.error)
                     st.stop()
 
-                # Step 4: Render chart
                 figure = ChartEngine().render(result, plan_or_error.visualization)
                 if figure:
                     st.plotly_chart(figure, use_container_width=True)
 
-                # Step 5: Show data table
                 with st.expander("View Data Table"):
                     st.dataframe(
                         pd.DataFrame(result.data),
                         use_container_width=True,
                     )
 
-                # Step 6: Generate explanation
                 explanation = ExplanationEngine().explain(result)
                 st.markdown(explanation)
 
-                # Save to chat history
-                st.session_state.chat_history.append({
-                    "question": question,
-                    "figure": figure,
-                    "data": result.data,
-                    "explanation": explanation,
-                })
+                entry = ChatEntry(
+                    question=question,
+                    explanation=explanation,
+                    data=result.data,
+                    figure=figure,
+                )
+                st.session_state.session.add(entry)
 
             except Exception as e:
                 st.error(f"Unexpected error: {e}")

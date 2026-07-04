@@ -245,5 +245,5 @@ class AnalysisEngine:
             .sum()
             .reset_index()
         )
-        result[date_col] = result[date_col].astype(str)
+        result[date_col] = result[date_col].astype(str).str[:7]
         return result
