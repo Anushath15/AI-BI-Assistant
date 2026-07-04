@@ -1,3 +1,4 @@
+🚀 **Live Demo:** https://ai-bi-assistant-ujl3vewuaeixr8jongabql.streamlit.app/
 # AI BI Assistant
 ### AI-Powered Business Intelligence Platform
 
