@@ -1,10 +1,3 @@
-"""
-core/session_manager.py
-
-Responsibility: Manage conversation history for the chat interface.
-Stores questions, results, and context across turns.
-"""
-
 from dataclasses import dataclass, field
 from typing import Optional, Any
 
@@ -16,6 +9,9 @@ class ChatEntry:
     data: Optional[list] = None
     error: Optional[str] = None
     figure: Optional[Any] = None
+    forecast_figure: Optional[Any] = None
+    forecast_info: Optional[dict] = None
+    is_time_series: bool = False
 
 
 class SessionManager:
