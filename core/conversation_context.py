@@ -1,5 +1,17 @@
+"""
+core/conversation_context.py
+
+Responsibility: Maintain AI planning context within a session.
+
+Tracks what the AI planned in previous turns so follow-up questions
+like "which one performed worst?" and "now filter by 2023" work correctly.
+
+Separate from SessionManager which handles UI rendering history.
+This module is purely for AI prompt injection.
+"""
+
 from dataclasses import dataclass, field
-from typing import Optional, Any
+from typing import Optional
 from models.execution_plan import ExecutionPlan
 
 
@@ -30,8 +42,6 @@ class ConversationContext:
         plan: Optional[ExecutionPlan] = None,
         result_data: Optional[list] = None,
     ):
-        """Record a completed conversation turn."""
-
         group_by = None
         metric = None
         filters = []
@@ -45,17 +55,24 @@ class ConversationContext:
                     metric = step.metric
                     self.active_metric = step.metric
                 if step.operation == "filter":
-                    filters.append({
+                    filter_entry = {
                         "column": step.column,
                         "operator": step.operator,
                         "value": step.value,
-                    })
-                    self.active_filters = filters
+                    }
+                    filters.append(filter_entry)
+                    existing = [
+                        f for f in self.active_filters
+                        if f.get("column") != step.column
+                    ]
+                    existing.append(filter_entry)
+                    self.active_filters = existing
 
         result_summary = None
         if result_data and len(result_data) > 0:
             top = result_data[0]
-            result_summary = str(top)
+            parts = [f"{k}: {v}" for k, v in top.items()]
+            result_summary = ", ".join(parts)
 
         turn = ConversationTurn(
             question=question,
@@ -71,10 +88,6 @@ class ConversationContext:
             self._turns.pop(0)
 
     def get_context_summary(self) -> str:
-        """
-        Returns a natural language summary of recent conversation
-        for injection into the PromptBuilder system prompt.
-        """
         if not self._turns:
             return ""
 
@@ -86,13 +99,13 @@ class ConversationContext:
             if turn.metric:
                 lines.append(f"   Metric: {turn.metric}")
             if turn.filters:
-                lines.append(f"   Filters: {turn.filters}")
+                lines.append(f"   Filters applied: {turn.filters}")
             if turn.result_summary:
                 lines.append(f"   Top result: {turn.result_summary}")
 
         lines.append("")
         lines.append("If the new question is a follow-up, extend the previous analysis.")
-        lines.append("Resolve pronouns like 'it', 'that', 'those', 'same' using the context above.")
+        lines.append("Resolve pronouns like 'it', 'that', 'those', 'which one', 'same' from the context above.")
 
         return "\n".join(lines)
 

@@ -1,9 +1,26 @@
+"""
+app.py
+
+Main Streamlit application.
+Wires all backend modules into a chat interface.
+
+Pipeline per question:
+1. PromptBuilder  — builds prompt with schema + context + business knowledge
+2. AIClient       — returns ExecutionPlan JSON
+3. CommandValidator — validates against real dataset
+4. AnalysisEngine — executes plan
+5. ChartEngine    — renders chart
+6. ExplanationEngine — generates business explanation
+7. ConversationContext — stores turn for follow-up questions
+"""
+
 import os
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from dotenv import load_dotenv
 
+from core.business_knowledge import BusinessKnowledgeBuilder
 from core.conversation_context import ConversationContext
 from core.data_loader import load_csv
 from core.data_cleaner import DataCleaner
@@ -26,7 +43,7 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------
-# Session state — three objects, all initialized once
+# Session state
 # ------------------------------------------------------------------
 
 if "df" not in st.session_state:
@@ -37,6 +54,8 @@ if "session" not in st.session_state:
     st.session_state.session = SessionManager()
 if "context" not in st.session_state:
     st.session_state.context = ConversationContext()
+if "business_schema" not in st.session_state:
+    st.session_state.business_schema = None
 
 # ------------------------------------------------------------------
 # Sidebar
@@ -56,15 +75,28 @@ with st.sidebar:
         else:
             df, _ = DataCleaner().clean(result)
             profile = DataProfiler().profile(df)
+
+            # Build business knowledge from the dataset
+            business_schema = BusinessKnowledgeBuilder().build(
+                profile, uploaded_file.name
+            )
+
             st.session_state.df = df
             st.session_state.profile = profile
             st.session_state.session = SessionManager()
             st.session_state.context = ConversationContext()
+            st.session_state.business_schema = business_schema
+
             st.success(f"Loaded {profile.rows:,} rows × {profile.columns} columns")
             st.divider()
-            st.markdown("**Columns**")
-            for col in profile.column_names:
-                st.caption(f"• {col}")
+
+            st.markdown("**Key Metrics**")
+            for kpi in business_schema.kpi_columns[:5]:
+                st.caption(f"📊 {kpi}")
+
+            st.markdown("**Dimensions**")
+            for dim in business_schema.dimensions[:5]:
+                st.caption(f"• {dim}")
 
     if st.button("Clear Chat"):
         st.session_state.session.clear()
@@ -81,6 +113,7 @@ st.caption("Ask any business question about your data.")
 if st.session_state.df is None:
     st.info("Upload a CSV file from the sidebar to get started.")
     st.stop()
+
 
 # ------------------------------------------------------------------
 # Chat history renderer
@@ -158,18 +191,22 @@ if question:
                 profile = st.session_state.profile
                 df = st.session_state.df
                 context = st.session_state.context
+                business_schema = st.session_state.business_schema
 
-                # Build prompt with conversation context
                 sp, up = PromptBuilder().build(
                     profile,
                     question,
                     context_summary=context.get_context_summary(),
+                    business_schema=business_schema,
                 )
                 raw = AIClient().ask(sp, up)
 
                 ok, plan_or_error = CommandValidator().validate(raw, profile)
                 if not ok:
-                    entry = ChatEntry(question=question, error=f"Planning error: {plan_or_error}")
+                    entry = ChatEntry(
+                        question=question,
+                        error=f"Planning error: {plan_or_error}"
+                    )
                     st.session_state.session.add(entry)
                     st.error(entry.error)
                     st.stop()
@@ -186,13 +223,17 @@ if question:
                     st.plotly_chart(figure, use_container_width=True)
 
                 with st.expander("View Data Table"):
-                    st.dataframe(pd.DataFrame(result.data), use_container_width=True)
+                    st.dataframe(
+                        pd.DataFrame(result.data),
+                        use_container_width=True
+                    )
 
                 explanation = ExplanationEngine().explain(result)
                 st.markdown(explanation)
 
                 is_time_series = any(
-                    s.operation == "time_series" for s in plan_or_error.steps
+                    s.operation == "time_series"
+                    for s in plan_or_error.steps
                 )
 
                 entry = ChatEntry(
@@ -203,8 +244,6 @@ if question:
                     is_time_series=is_time_series,
                 )
                 st.session_state.session.add(entry)
-
-                # Add to conversation context for follow-up questions
                 context.add_turn(question, plan_or_error, result.data)
 
                 if is_time_series:

@@ -1,4 +1,7 @@
 import json
+from typing import Optional, TYPE_CHECKING
+if TYPE_CHECKING:
+    from models.business_schema import BusinessSchema
 from typing import Optional
 from models.dataset_profile import DatasetProfile
 from utils.constants import (
@@ -50,6 +53,7 @@ class PromptBuilder:
         profile: DatasetProfile,
         question: str,
         context_summary: Optional[str] = None,
+        business_schema: Optional["BusinessSchema"] = None,
     ) -> tuple[str, str]:
 
         safe_sample = [
@@ -71,12 +75,23 @@ class PromptBuilder:
             "supported_filter_operators": SUPPORTED_FILTER_OPERATORS,
         }
 
+        business_section = ""
+        if business_schema:
+            business_section = f"""
+Business Context:
+{business_schema.business_summary}
+KPI columns (aggregate these for business questions): {business_schema.kpi_columns}
+Dimension columns (group by these): {business_schema.dimensions}
+Recommended aggregations: {business_schema.aggregation_hints}
+"""
+
         conversation_section = ""
         if context_summary:
             conversation_section = f"\n{context_summary}\n"
 
         user_prompt = f"""Dataset Schema:
 {json.dumps(context, indent=2)}
+{business_section}
 {conversation_section}
 Business Question:
 {question}
