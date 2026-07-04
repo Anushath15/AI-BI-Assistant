@@ -1,4 +1,5 @@
 import json
+from typing import Optional
 from models.dataset_profile import DatasetProfile
 from utils.constants import (
     SUPPORTED_OPERATIONS,
@@ -7,7 +8,7 @@ from utils.constants import (
     SUPPORTED_FILTER_OPERATORS,
 )
 
-SYSTEM_PROMPT = """You are an AI Business Intelligence Planner.
+SYSTEM_PROMPT = """You are an AI Business Intelligence Planner for a company.
 
 Your ONLY job is to convert a business question into a structured JSON execution plan.
 
@@ -18,6 +19,8 @@ Rules:
 - Never invent column names. Use ONLY columns from the dataset schema.
 - Always return valid JSON. Nothing else. No markdown. No backticks.
 - Every step must use only supported operations.
+- If the question is a follow-up, extend or modify the previous analysis using the conversation context.
+- Resolve pronouns like 'it', 'that', 'those', 'which one' using the conversation context.
 
 The JSON must follow this exact format:
 {
@@ -42,7 +45,12 @@ For time series questions, always include both column and metric:
 
 class PromptBuilder:
 
-    def build(self, profile: DatasetProfile, question: str) -> tuple[str, str]:
+    def build(
+        self,
+        profile: DatasetProfile,
+        question: str,
+        context_summary: Optional[str] = None,
+    ) -> tuple[str, str]:
 
         safe_sample = [
             {k: str(v) for k, v in row.items()}
@@ -63,9 +71,13 @@ class PromptBuilder:
             "supported_filter_operators": SUPPORTED_FILTER_OPERATORS,
         }
 
+        conversation_section = ""
+        if context_summary:
+            conversation_section = f"\n{context_summary}\n"
+
         user_prompt = f"""Dataset Schema:
 {json.dumps(context, indent=2)}
-
+{conversation_section}
 Business Question:
 {question}
 

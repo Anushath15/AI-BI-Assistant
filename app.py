@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from dotenv import load_dotenv
 
+from core.conversation_context import ConversationContext
 from core.data_loader import load_csv
 from core.data_cleaner import DataCleaner
 from core.data_profiler import DataProfiler
@@ -24,12 +25,22 @@ st.set_page_config(
     layout="wide",
 )
 
+# ------------------------------------------------------------------
+# Session state — three objects, all initialized once
+# ------------------------------------------------------------------
+
 if "df" not in st.session_state:
     st.session_state.df = None
 if "profile" not in st.session_state:
     st.session_state.profile = None
 if "session" not in st.session_state:
     st.session_state.session = SessionManager()
+if "context" not in st.session_state:
+    st.session_state.context = ConversationContext()
+
+# ------------------------------------------------------------------
+# Sidebar
+# ------------------------------------------------------------------
 
 with st.sidebar:
     st.title("📊 AI BI Assistant")
@@ -48,14 +59,21 @@ with st.sidebar:
             st.session_state.df = df
             st.session_state.profile = profile
             st.session_state.session = SessionManager()
+            st.session_state.context = ConversationContext()
             st.success(f"Loaded {profile.rows:,} rows × {profile.columns} columns")
             st.divider()
             st.markdown("**Columns**")
             for col in profile.column_names:
                 st.caption(f"• {col}")
-            if st.button("Clear Chat"):
-                st.session_state.session.clear()
-                st.rerun()
+
+    if st.button("Clear Chat"):
+        st.session_state.session.clear()
+        st.session_state.context.clear()
+        st.rerun()
+
+# ------------------------------------------------------------------
+# Main area
+# ------------------------------------------------------------------
 
 st.title("📊 AI BI Assistant")
 st.caption("Ask any business question about your data.")
@@ -64,6 +82,9 @@ if st.session_state.df is None:
     st.info("Upload a CSV file from the sidebar to get started.")
     st.stop()
 
+# ------------------------------------------------------------------
+# Chat history renderer
+# ------------------------------------------------------------------
 
 def render_entry(entry: ChatEntry, index: int):
     with st.chat_message("user"):
@@ -83,7 +104,11 @@ def render_entry(entry: ChatEntry, index: int):
             if entry.forecast_figure:
                 st.plotly_chart(entry.forecast_figure, use_container_width=True)
                 if entry.forecast_info:
-                    st.caption(f"ML Model: Linear Regression | Trend: {entry.forecast_info['trend']} | Monthly change: ${entry.forecast_info['slope']:,.2f}")
+                    st.caption(
+                        f"ML Model: Linear Regression | "
+                        f"Trend: {entry.forecast_info['trend']} | "
+                        f"Monthly change: ${entry.forecast_info['slope']:,.2f}"
+                    )
             else:
                 if st.button("📈 Show 3-Month Forecast", key=f"fc_{index}"):
                     result_df = pd.DataFrame(entry.data)
@@ -95,9 +120,21 @@ def render_entry(entry: ChatEntry, index: int):
                     hist = forecast_df[forecast_df["type"] == "historical"]
                     fcast = forecast_df[forecast_df["type"] == "forecast"]
                     fig = go.Figure()
-                    fig.add_trace(go.Scatter(x=hist[date_col], y=hist[metric_col], mode="lines+markers", name="Historical", line=dict(color="#60a5fa")))
-                    fig.add_trace(go.Scatter(x=fcast[date_col], y=fcast[metric_col], mode="lines+markers", name="Forecast", line=dict(color="#f97316", dash="dash")))
-                    fig.update_layout(title="Sales Forecast — Next 3 Months (Linear Regression)", template="plotly_dark", height=400)
+                    fig.add_trace(go.Scatter(
+                        x=hist[date_col], y=hist[metric_col],
+                        mode="lines+markers", name="Historical",
+                        line=dict(color="#60a5fa")
+                    ))
+                    fig.add_trace(go.Scatter(
+                        x=fcast[date_col], y=fcast[metric_col],
+                        mode="lines+markers", name="Forecast",
+                        line=dict(color="#f97316", dash="dash")
+                    ))
+                    fig.update_layout(
+                        title="Sales Forecast — Next 3 Months (Linear Regression)",
+                        template="plotly_dark",
+                        height=400,
+                    )
                     entry.forecast_figure = fig
                     entry.forecast_info = model_info
                     st.rerun()
@@ -105,6 +142,10 @@ def render_entry(entry: ChatEntry, index: int):
 
 for i, entry in enumerate(st.session_state.session.get_history()):
     render_entry(entry, i)
+
+# ------------------------------------------------------------------
+# Chat input
+# ------------------------------------------------------------------
 
 question = st.chat_input("Ask a question about your data...")
 
@@ -116,8 +157,14 @@ if question:
             try:
                 profile = st.session_state.profile
                 df = st.session_state.df
+                context = st.session_state.context
 
-                sp, up = PromptBuilder().build(profile, question)
+                # Build prompt with conversation context
+                sp, up = PromptBuilder().build(
+                    profile,
+                    question,
+                    context_summary=context.get_context_summary(),
+                )
                 raw = AIClient().ask(sp, up)
 
                 ok, plan_or_error = CommandValidator().validate(raw, profile)
@@ -157,8 +204,11 @@ if question:
                 )
                 st.session_state.session.add(entry)
 
+                # Add to conversation context for follow-up questions
+                context.add_turn(question, plan_or_error, result.data)
+
                 if is_time_series:
-                    st.info("Click '📈 Show 3-Month Forecast' below to run ML forecasting.")
+                    st.info("Scroll up and click '📈 Show 3-Month Forecast' to run ML forecasting.")
 
             except Exception as e:
                 st.error(f"Unexpected error: {e}")
