@@ -1,8 +1,8 @@
 import os
-import logging
 from groq import Groq
 
-logger = logging.getLogger(__name__)
+from utils.logger import get_logger
+logger = get_logger(__name__)
 
 
 class AIClient:

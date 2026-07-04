@@ -1,4 +1,3 @@
-import logging
 import pandas as pd
 from dataclasses import dataclass, field
 from typing import Optional
@@ -7,7 +6,8 @@ from models.execution_plan import ExecutionPlan
 from models.analysis_step import AnalysisStep
 from models.analysis_result import AnalysisResult
 
-logger = logging.getLogger(__name__)
+from utils.logger import get_logger
+logger = get_logger(__name__)
 
 
 @dataclass
