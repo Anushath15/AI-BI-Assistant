@@ -34,18 +34,16 @@ The JSON must follow this exact format:
         "y_axis": "Sales",
         "title": "Top 10 Products by Sales in 2024"
     }
-}"""
+}
+
+For time series questions, always include both column and metric:
+{"operation": "time_series", "column": "Order Date", "metric": "Sales"}"""
 
 
 class PromptBuilder:
 
     def build(self, profile: DatasetProfile, question: str) -> tuple[str, str]:
-        """
-        Returns (system_prompt, user_prompt) tuple.
-        AIClient.ask() takes both separately.
-        """
-        # Convert sample_data values to strings to handle
-        # Timestamps, numpy types, and other non-JSON-serializable types
+
         safe_sample = [
             {k: str(v) for k, v in row.items()}
             for row in profile.sample_data

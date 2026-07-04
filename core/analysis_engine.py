@@ -236,8 +236,14 @@ class AnalysisEngine:
         df: pd.DataFrame,
         context: ExecutionContext,
     ) -> pd.DataFrame:
-        date_col = step.column
+        date_col = step.column or context.group_by_column
         metric = step.metric
+
+        if not date_col:
+            raise ValueError("time_series requires a date column")
+        if not metric:
+            raise ValueError("time_series requires a metric column")
+
         df = df.copy()
         df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
         result = (
