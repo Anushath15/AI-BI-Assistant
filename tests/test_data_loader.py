@@ -2,7 +2,7 @@ import io
 import pytest
 import pandas as pd
  
-from data_loader import (
+from core.data_loader import (
     load_csv,
     LoadResult,
     MAX_FILE_SIZE_BYTES,
