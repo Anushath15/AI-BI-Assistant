@@ -64,12 +64,20 @@ class AnalysisEngine:
                 execution_steps_run=steps_run,
             )
 
-        except Exception as e:
-            logger.exception("AnalysisEngine failed at step %d", steps_run + 1)
+        except (KeyError, ValueError, TypeError) as e:
+            logger.error("AnalysisEngine execution error at step %d: %s", steps_run + 1, e)
             return AnalysisResult(
                 success=False,
                 question=question,
                 error=f"Execution failed at step {steps_run + 1}: {e}",
+                execution_steps_run=steps_run,
+            )
+        except Exception as e:
+            logger.exception("Unexpected error in AnalysisEngine at step %d", steps_run + 1)
+            return AnalysisResult(
+                success=False,
+                question=question,
+                error=f"Unexpected error at step {steps_run + 1}: {e}",
                 execution_steps_run=steps_run,
             )
 

@@ -83,11 +83,8 @@ with st.sidebar:
         )
 
         load_btn = st.button("Load Dataset")
-
-        if load_btn or (
-            "loaded_dataset" not in st.session_state
-            or st.session_state.loaded_dataset != selected
-        ):
+        auto_load = st.session_state.df is None
+        if load_btn or auto_load:
             result = registry.load(selected)
             success, data = result
 
