@@ -56,6 +56,8 @@ if "context" not in st.session_state:
     st.session_state.context = ConversationContext()
 if "business_schema" not in st.session_state:
     st.session_state.business_schema = None
+if "loaded_dataset" not in st.session_state:
+    st.session_state.loaded_dataset = None
 
 # ------------------------------------------------------------------
 # Sidebar
@@ -63,40 +65,64 @@ if "business_schema" not in st.session_state:
 
 with st.sidebar:
     st.title("📊 AI BI Assistant")
-    st.markdown("Upload a CSV and ask questions in plain English.")
+    st.markdown("Ask business questions about your company data.")
     st.divider()
 
-    uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+    # Dataset selector — enterprise mode
+    from core.dataset_registry import DatasetRegistry
+    registry = DatasetRegistry()
+    available_datasets = registry.list_datasets()
 
-    if uploaded_file:
-        success, result = load_csv(uploaded_file)
-        if not success:
-            st.error(result)
-        else:
-            df, _ = DataCleaner().clean(result)
-            profile = DataProfiler().profile(df)
+    if not available_datasets:
+        st.warning("No datasets found in data/ folder.")
+    else:
+        selected = st.selectbox(
+            "Select Dataset",
+            options=available_datasets,
+            index=0,
+        )
 
-            # Build business knowledge from the dataset
-            business_schema = BusinessKnowledgeBuilder().build(
-                profile, uploaded_file.name
-            )
+        load_btn = st.button("Load Dataset")
 
-            st.session_state.df = df
-            st.session_state.profile = profile
-            st.session_state.session = SessionManager()
-            st.session_state.context = ConversationContext()
-            st.session_state.business_schema = business_schema
+        if load_btn or (
+            "loaded_dataset" not in st.session_state
+            or st.session_state.loaded_dataset != selected
+        ):
+            result = registry.load(selected)
+            success, data = result
 
-            st.success(f"Loaded {profile.rows:,} rows × {profile.columns} columns")
-            st.divider()
+            if not success:
+                st.error(data)
+            else:
+                df, _ = DataCleaner().clean(data)
+                profile = DataProfiler().profile(df)
+                business_schema = BusinessKnowledgeBuilder().build(
+                    profile, selected
+                )
 
-            st.markdown("**Key Metrics**")
-            for kpi in business_schema.kpi_columns[:5]:
-                st.caption(f"📊 {kpi}")
+                st.session_state.df = df
+                st.session_state.profile = profile
+                st.session_state.session = SessionManager()
+                st.session_state.context = ConversationContext()
+                st.session_state.business_schema = business_schema
+                st.session_state.loaded_dataset = selected
 
-            st.markdown("**Dimensions**")
-            for dim in business_schema.dimensions[:5]:
-                st.caption(f"• {dim}")
+                st.success(
+                    f"Loaded {profile.rows:,} rows × {profile.columns} columns"
+                )
+
+    st.divider()
+
+    if st.session_state.business_schema:
+        st.markdown("**Key Metrics**")
+        for kpi in st.session_state.business_schema.kpi_columns[:5]:
+            st.caption(f"📊 {kpi}")
+
+        st.markdown("**Dimensions**")
+        for dim in st.session_state.business_schema.dimensions[:5]:
+            st.caption(f"• {dim}")
+
+    st.divider()
 
     if st.button("Clear Chat"):
         st.session_state.session.clear()
