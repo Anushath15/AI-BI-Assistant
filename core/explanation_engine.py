@@ -47,7 +47,7 @@ Provide a brief business explanation of these results."""
                 user_prompt,
             )
 
-            return explanation.strip()
+            return explanation.strip().replace("`", "")
 
         except Exception as e:
             logger.exception("ExplanationEngine failed")
