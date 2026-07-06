@@ -22,7 +22,7 @@ load_dotenv()
 # ---------------------------
 # UI
 # ---------------------------
-from ui.styles import inject_styles  # ✅ FIX 2: Use correct function name
+from ui.styles import apply_global_styles  
 
 # ✅ FIX 2 & 8: Check if new UI components exist, fallback to old
 try:
@@ -39,12 +39,12 @@ try:
 except ImportError:
     USE_NEW_UI = False
 
-# Apply global theme
 if USE_NEW_UI:
     from ui.styles import apply_global_styles
     apply_global_styles()
 else:
-    inject_styles()
+    
+    apply_global_styles()
 
 # ---------------------------
 # Core Modules
