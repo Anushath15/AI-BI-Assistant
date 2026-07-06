@@ -1,230 +1,97 @@
-"""
-ui/styles.py
+import streamlit as st
 
-Global CSS styling for AI BI Assistant.
-Injected once at app startup via inject_styles().
-"""
+def apply_global_styles():
 
-GLOBAL_CSS = """
+    st.markdown("""
+
 <style>
 
-/* ── Reset & Base ─────────────────────────────────── */
-html, body, [class*="css"] {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont,
-                 'Segoe UI', sans-serif;
+html, body, [class*="css"]{
+
+background:#F8FAFC;
+
+font-family:'Inter',sans-serif;
+
+color:#111827;
+
 }
 
-/* ── Force light background on main area ─────────── */
-[data-testid="stAppViewContainer"] {
-    background-color: #F8FAFC !important;
+.block-container{
+
+padding-top:2rem;
+
+padding-bottom:2rem;
+
+max-width:1400px;
+
 }
 
-section.main {
-    background-color: #F8FAFC !important;
+div[data-testid="stSidebar"]{
+
+background:#111827;
+
 }
 
-.main .block-container {
-    background-color: #F8FAFC !important;
-    padding-top: 1.5rem;
-    max-width: 1100px;
+h1,h2,h3,h4{
+
+color:#111827;
+
+font-weight:700;
+
 }
 
-/* ── Fix main content text visibility ────────────── */
-.main h1, .main h2, .main h3 {
-    color: #111827 !important;
+.stButton>button{
+
+border-radius:12px;
+
+background:#2563EB;
+
+color:white;
+
+border:none;
+
+padding:10px 20px;
+
+font-weight:600;
+
+transition:.3s;
+
 }
 
-.main p, .main span, .main div {
-    color: #111827;
+.stButton>button:hover{
+
+background:#1D4ED8;
+
 }
 
-/* ── Sidebar ──────────────────────────────────────── */
-[data-testid="stSidebar"] {
-    background-color: #111827 !important;
-    border-right: 1px solid #1F2937;
+.metric-card{
+
+background:white;
+
+padding:20px;
+
+border-radius:18px;
+
+box-shadow:0 10px 25px rgba(0,0,0,.08);
+
+border:1px solid #ECECEC;
+
 }
 
-[data-testid="stSidebar"] * {
-    color: #F9FAFB !important;
-}
+.chat-card{
 
-[data-testid="stSidebar"] [data-testid="stMarkdown"] p {
-    color: #9CA3AF !important;
-    font-size: 0.78rem;
-}
+background:white;
 
-/* ── Hide Streamlit Branding ──────────────────────── */
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
+border-radius:18px;
 
-/* ── Chat Messages ────────────────────────────────── */
-[data-testid="stChatMessage"] {
-    background: white !important;
-    border-radius: 12px !important;
-    border: 1px solid #E5E7EB !important;
-    padding: 1rem !important;
-    margin-bottom: 0.75rem !important;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
-}
+padding:18px;
 
-[data-testid="stChatMessage"] p,
-[data-testid="stChatMessage"] span,
-[data-testid="stChatMessage"] div {
-    color: #111827 !important;
-}
+box-shadow:0 8px 24px rgba(0,0,0,.08);
 
-/* ── User message accent ──────────────────────────── */
-[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
-    border-left: 3px solid #2563EB !important;
-    background: #EFF6FF !important;
-}
+margin-bottom:15px;
 
-/* ── KPI Cards ────────────────────────────────────── */
-.kpi-card {
-    background: white;
-    border-radius: 12px;
-    padding: 1.25rem 1.5rem;
-    border: 1px solid #E5E7EB;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-}
-
-.kpi-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #6B7280;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: 0.25rem;
-}
-
-.kpi-value {
-    font-size: 1.75rem;
-    font-weight: 700;
-    color: #111827;
-    line-height: 1.2;
-}
-
-.kpi-sub {
-    font-size: 0.75rem;
-    color: #6B7280;
-    margin-top: 0.2rem;
-}
-
-/* ── Status Badge ─────────────────────────────────── */
-.status-badge {
-    display: inline-block;
-    background: #D1FAE5;
-    color: #065F46 !important;
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 0.2rem 0.6rem;
-    border-radius: 999px;
-    letter-spacing: 0.05em;
-}
-
-/* ── Section Labels ───────────────────────────────── */
-.section-label {
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: #6B7280 !important;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin-bottom: 0.5rem;
-    margin-top: 0.5rem;
-}
-
-/* ── Sidebar Logo ─────────────────────────────────── */
-.sidebar-logo {
-    padding: 1rem 0 1.5rem 0;
-    border-bottom: 1px solid #1F2937;
-    margin-bottom: 1.5rem;
-}
-
-.sidebar-logo-text {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: #F9FAFB !important;
-    letter-spacing: -0.02em;
-}
-
-.sidebar-logo-sub {
-    font-size: 0.7rem;
-    color: #6B7280 !important;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    margin-top: 0.2rem;
-}
-
-/* ── Sidebar Metrics ──────────────────────────────── */
-.sidebar-metric {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.4rem 0;
-    border-bottom: 1px solid #1F2937;
-}
-
-.sidebar-metric-label {
-    font-size: 0.75rem;
-    color: #6B7280 !important;
-}
-
-.sidebar-metric-value {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #F9FAFB !important;
-}
-
-/* ── Buttons ──────────────────────────────────────── */
-.stButton > button {
-    background-color: #2563EB !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-    font-size: 0.85rem !important;
-}
-
-.stButton > button:hover {
-    background-color: #1D4ED8 !important;
-    color: white !important;
-}
-
-/* ── Chat Input ───────────────────────────────────── */
-[data-testid="stChatInput"] textarea {
-    background: white !important;
-    color: #111827 !important;
-    border-radius: 12px !important;
-}
-
-/* ── Expander ─────────────────────────────────────── */
-[data-testid="stExpander"] {
-    border: 1px solid #E5E7EB !important;
-    border-radius: 8px !important;
-    background: white !important;
-}
-
-/* ── Alerts ───────────────────────────────────────── */
-[data-testid="stAlert"] {
-    border-radius: 8px !important;
-}
-
-/* ── Dividers ─────────────────────────────────────── */
-[data-testid="stSidebar"] hr {
-    border-color: #1F2937 !important;
-}
-
-/* ── Plotly charts background ─────────────────────── */
-.js-plotly-plot {
-    border-radius: 12px;
-    overflow: hidden;
 }
 
 </style>
-"""
 
-
-def inject_styles():
-    import streamlit as st
-    st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
+""",unsafe_allow_html=True)
