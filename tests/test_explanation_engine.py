@@ -7,16 +7,17 @@ Run: pytest tests/test_explanation_engine.py -v
 """
 
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from core.explanation_engine import ExplanationEngine
 from models.analysis_result import AnalysisResult
 
 
 def make_engine_with_mock_response(mock_text: str) -> ExplanationEngine:
-    engine = ExplanationEngine()
-    engine.client = MagicMock()
-    engine.client.ask.return_value = mock_text
+    with patch("core.explanation_engine.AIClient") as MockClient:
+        MockClient.return_value.ask.return_value = mock_text
+        engine = ExplanationEngine()
+    engine.client.ask.return_value = mock_text  # keep mock active post-construction
     return engine
 
 
@@ -134,7 +135,8 @@ class TestEmptyDataset:
             columns=[],
             execution_steps_run=1,
         )
-        engine = ExplanationEngine()
+        with patch("core.explanation_engine.AIClient"):
+            engine = ExplanationEngine()
         text = engine.explain(result)
         assert_has_all_sections(text)
 
@@ -147,7 +149,8 @@ class TestFailedAnalysis:
             error="Column 'Revenue' not found in dataset.",
             execution_steps_run=0,
         )
-        engine = ExplanationEngine()
+        with patch("core.explanation_engine.AIClient"):
+            engine = ExplanationEngine()
         text = engine.explain(result)
         assert "could not be completed" in text
         assert "Revenue" in text
