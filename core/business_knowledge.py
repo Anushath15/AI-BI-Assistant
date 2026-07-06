@@ -6,17 +6,27 @@ MEASURE_KEYWORDS = [
     "sales", "revenue", "profit", "cost", "price", "amount",
     "total", "income", "expense", "margin", "discount", "tax",
     "quantity", "qty", "units", "count", "value", "budget",
+    # ✅ FIX: Added more synonyms
+    "rev", "turnover", "earnings", "proceeds", "gross", "net",
+    "spend", "expenditure", "fee", "charge", "payment", "receipt",
+    "gain", "loss", "yield", "return", "dividend", "commission",
+    "rate", "percentage", "ratio", "score", "index", "points",
 ]
 
 # Keywords that suggest a column is a KPI
 KPI_KEYWORDS = [
     "profit", "revenue", "sales", "margin", "growth",
     "conversion", "retention", "churn", "roi", "kpi",
+    # ✅ FIX: Added more
+    "turnover", "earnings", "return", "yield", "performance",
+    "efficiency", "productivity", "utilization", "acquisition",
 ]
 
 # Keywords that suggest a column is an ID (not useful for analysis)
 ID_KEYWORDS = [
     "id", "key", "code", "number", "no", "num", "ref", "index",
+    # ✅ FIX: Added more
+    "uuid", "guid", "serial", "row", "record", "entry",
 ]
 
 # Keywords that suggest a dimension (grouping column)
@@ -24,6 +34,12 @@ DIMENSION_KEYWORDS = [
     "region", "category", "segment", "type", "status", "name",
     "department", "branch", "city", "state", "country", "zone",
     "product", "customer", "employee", "channel", "brand",
+    # ✅ FIX: Added more
+    "area", "territory", "division", "group", "class", "tier",
+    "level", "grade", "priority", "stage", "phase", "mode",
+    "method", "platform", "device", "source", "medium", "campaign",
+    "team", "manager", "lead", "agent", "vendor", "supplier",
+    "month", "year", "quarter", "week", "day", "period",
 ]
 
 # Aggregation hints per column type
@@ -36,6 +52,30 @@ AGGREGATION_HINTS = {
     "price": "mean",
     "discount": "mean",
     "margin": "mean",
+    # ✅ FIX: Added more
+    "turnover": "sum",
+    "earnings": "sum",
+    "proceeds": "sum",
+    "gross": "sum",
+    "net": "sum",
+    "spend": "sum",
+    "expenditure": "sum",
+    "fee": "sum",
+    "charge": "sum",
+    "payment": "sum",
+    "receipt": "sum",
+    "gain": "sum",
+    "loss": "sum",
+    "yield": "mean",
+    "return": "mean",
+    "dividend": "sum",
+    "commission": "sum",
+    "rate": "mean",
+    "percentage": "mean",
+    "ratio": "mean",
+    "score": "mean",
+    "index": "mean",
+    "points": "sum",
 }
 
 

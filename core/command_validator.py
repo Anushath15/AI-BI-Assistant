@@ -10,7 +10,6 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 # Keywords that indicate a strategic/consulting question
-# that cannot map to a single execution plan
 STRATEGIC_KEYWORDS = [
     "business problems", "strategic", "consulting", "recommend",
     "advise", "strategy", "opportunities", "weaknesses", "strengths",
@@ -103,6 +102,14 @@ class CommandValidator:
                 error=f"Invalid execution plan structure: {msg}",
             )
 
+        # ✅ FIX: Step 5.5 — Semantic validation
+        semantic_error = self._validate_semantics(plan)
+        if semantic_error:
+            return ValidationResult(
+                success=False,
+                error=semantic_error,
+            )
+
         # Step 6: Validate column names against actual dataset
         valid_columns = set(profile.column_names)
         numeric_columns = set(profile.numeric_columns)
@@ -167,3 +174,50 @@ class CommandValidator:
                     return text[start:i + 1]
 
         return text[start:]
+
+    # ✅ FIX: New method — Semantic validation
+    def _validate_semantics(self, plan: ExecutionPlan) -> Optional[str]:
+        """
+        Check if the plan makes semantic sense.
+        Returns error message if invalid, None if OK.
+        """
+        operations = [s.operation for s in plan.steps]
+
+        # Check: aggregate without group_by should have a metric
+        has_group_by = "group_by" in operations
+        has_aggregate = "aggregate" in operations
+
+        if has_aggregate and not has_group_by:
+            # aggregate without group_by is OK for single-value KPI
+            # But let's check if metric exists
+            agg_step = next((s for s in plan.steps if s.operation == "aggregate"), None)
+            if agg_step and not agg_step.metric:
+                return "Aggregate operation requires a metric column."
+
+        # Check: filter without value
+        for step in plan.steps:
+            if step.operation == "filter":
+                if not step.column or not step.operator:
+                    return "Filter operation requires column and operator."
+                if step.value is None and step.operator not in ["isnull", "notnull"]:
+                    return "Filter operation requires a value."
+
+        # Check: sort without column (when no group_by)
+        if "sort" in operations and not has_group_by:
+            sort_step = next((s for s in plan.steps if s.operation == "sort"), None)
+            if sort_step and not sort_step.column:
+                return "Sort operation requires a column when no group_by is specified."
+
+        # Check: time_series without metric
+        if "time_series" in operations:
+            ts_step = next((s for s in plan.steps if s.operation == "time_series"), None)
+            if ts_step and not ts_step.metric:
+                return "Time series operation requires a metric column."
+
+        # Check: visualization config matches data
+        viz = plan.visualization
+        if viz.chart_type == "pie" and not viz.values:
+            # Pie chart needs values — fallback OK, just warn
+            pass
+
+        return None

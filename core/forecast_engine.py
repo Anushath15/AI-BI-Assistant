@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
+from utils.exceptions import ForecastError
 
 
 class ForecastEngine:
@@ -31,6 +32,13 @@ class ForecastEngine:
         df = df.copy()
         df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
         df = df.dropna(subset=[date_col]).sort_values(date_col)
+
+        # ✅ FIX: Check minimum data points
+        if len(df) < 2:
+            raise ForecastError(
+                f"Need at least 2 data points for forecasting, "
+                f"but only found {len(df)} after removing invalid dates."
+            )
 
         # Create numeric index for regression (months since start)
         df["_index"] = range(len(df))
@@ -77,6 +85,17 @@ class ForecastEngine:
         Returns model coefficients for explainability.
         """
         df = df.copy()
+        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+        df = df.dropna(subset=[date_col])
+
+        # ✅ FIX: Check minimum data points
+        if len(df) < 2:
+            return {
+                "slope": 0.0,
+                "intercept": 0.0,
+                "trend": "insufficient data",
+            }
+
         df["_index"] = range(len(df))
         X = df[["_index"]].values
         y = df[metric_col].values
