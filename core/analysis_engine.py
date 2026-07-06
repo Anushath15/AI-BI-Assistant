@@ -39,6 +39,18 @@ class AnalysisEngine:
                 steps_run += 1
 
             if working_df.empty:
+                # If the last executed step was a filter, empty result is valid
+                last_step = plan.steps[steps_run - 1] if steps_run > 0 else None
+                if last_step and last_step.operation == "filter":
+                    return AnalysisResult(
+                        success=True,
+                        question=question,
+                        data=[],
+                        row_count=0,
+                        columns=list(working_df.columns) if working_df.columns.tolist() else list(df.columns),
+                        execution_steps_run=steps_run,
+                    )
+                
                 return AnalysisResult(
                     success=False,
                     question=question,
@@ -131,12 +143,36 @@ class AnalysisEngine:
             "endswith":   lambda: df[df[col].astype(str).str.endswith(str(val), na=False)],
             "year_equals":  lambda: df[pd.to_datetime(df[col], errors="coerce").dt.year == int(val)],
             "month_equals": lambda: df[pd.to_datetime(df[col], errors="coerce").dt.month == int(val)],
+            "in": lambda: self._filter_in(df, col, val),
         }
 
         handler = ops.get(op)
         if not handler:
             raise ValueError(f"Unsupported filter operator: {op}")
         return handler()
+
+    # ✅ NEW: _filter_in method for multi-value filtering
+    def _filter_in(
+        self,
+        df: pd.DataFrame,
+        col: str,
+        val,
+    ) -> pd.DataFrame:
+        """
+        Handle the 'in' filter operator.
+
+        value must be a list. Examples:
+        - ["Technology", "Furniture"]  → df[col].isin([...])
+        - ["West"]                     → single-item list (works fine)
+        - []                           → empty list → returns empty DataFrame
+        """
+        if not isinstance(val, list):
+            raise ValueError(
+                f"Filter operator 'in' requires a list of values, "
+                f"got {type(val).__name__}: {val!r}. "
+                f'Use: {{"operator": "in", "value": ["A", "B"]}}'
+            )
+        return df[df[col].isin(val)]
 
     def _group_by(
         self,

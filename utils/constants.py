@@ -45,4 +45,5 @@ SUPPORTED_FILTER_OPERATORS = [
     "endswith",
     "year_equals",
     "month_equals",
+    "in",  
 ]
