@@ -547,10 +547,7 @@ def render_entry(entry: ChatEntry, index: int):
             if USE_NEW_UI:
                 render_insight_card(entry.explanation)
             else:
-                # ✅ POLISH: Better spacing around explanation
-                st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
                 st.markdown(entry.explanation)
-                st.markdown("<div style='margin-bottom:16px;'></div>", unsafe_allow_html=True)
         if entry.is_time_series:
             if entry.forecast_figure:
                 st.plotly_chart(entry.forecast_figure, use_container_width=True)
@@ -611,15 +608,14 @@ if question:
         st.write(question)
 
     with st.chat_message("assistant"):
-        # ✅ POLISH: Better initial status label
-        status = st.status("Analyzing your question...")
+        status = st.status("Processing...")
         try:
             profile = st.session_state.profile
             df = st.session_state.df
             context = st.session_state.context
             business_schema = st.session_state.business_schema
 
-            status.update(label="Building execution plan...")
+            status.update(label="Creating execution plan...")
             sp, up = PromptBuilder().build(
                 profile, question,
                 context_summary=context.get_context_summary(),
@@ -627,12 +623,12 @@ if question:
             )
             raw = AIClient().ask(sp, up)
 
-            status.update(label="Validating execution plan...")
+            status.update(label="Validating plan...")
             ok, plan_or_error = CommandValidator().validate(
                 raw, profile, original_question=question
             )
             if not ok:
-                status.update(label="Analysis complete", state="error")
+                status.update(label="Done", state="error")
                 entry = ChatEntry(question=question, error=plan_or_error)
                 st.session_state.session.add(entry)
                 if USE_NEW_UI:
@@ -641,10 +637,10 @@ if question:
                     st.error(plan_or_error)
                 st.stop()
 
-            status.update(label="Crunching the numbers...")
+            status.update(label="Running analysis...")
             result = AnalysisEngine().execute(df, plan_or_error, question)
             if not result.success:
-                status.update(label="Analysis complete", state="error")
+                status.update(label="Done", state="error")
                 entry = ChatEntry(question=question, error=result.error)
                 st.session_state.session.add(entry)
                 if USE_NEW_UI:
@@ -653,33 +649,22 @@ if question:
                     st.error(result.error)
                 st.stop()
 
-            status.update(label="Building visualization...")
+            status.update(label="Building visualisation...")
             figure = ChartEngine().render(result, plan_or_error.visualization)
             if figure:
-                # ✅ POLISH: Dynamic chart title fallback
-                viz_config = plan_or_error.visualization
-                if not viz_config.title or viz_config.title.strip() == "":
-                    figure.update_layout(
-                        title_text=question,
-                        title_font=dict(size=14, color="#111827"),
-                    )
                 st.plotly_chart(figure, use_container_width=True)
 
             with st.expander("View Data Table"):
                 st.dataframe(pd.DataFrame(result.data), use_container_width=True)
 
-            status.update(label="Generating business insights...")
+            status.update(label="Generating insight...")
             explanation = ExplanationEngine().explain(result)
             if USE_NEW_UI:
                 render_insight_card(explanation)
             else:
-                # ✅ POLISH: Better spacing around explanation
-                st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
                 st.markdown(explanation)
-                st.markdown("<div style='margin-bottom:16px;'></div>", unsafe_allow_html=True)
 
-            # ✅ POLISH: Cleaner completion label
-            status.update(label="Analysis complete", state="complete")
+            status.update(label="Done ✓", state="complete")
 
             is_time_series = any(
                 s.operation == "time_series" for s in plan_or_error.steps
@@ -697,7 +682,7 @@ if question:
                 st.info("Click '📈 Show 3-Month Forecast' above to run ML forecasting.")
 
         except Exception as e:
-            status.update(label="Analysis complete", state="error")
+            status.update(label="Error", state="error")
             if USE_NEW_UI:
                 render_planning_error(f"An unexpected error occurred. Please try again.\n\nDetail: {e}")
             else:
