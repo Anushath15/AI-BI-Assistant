@@ -2,9 +2,6 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-# ✅ FIX 1: Move load_dotenv AFTER st.set_page_config
-# Or use st.secrets exclusively
-
 # ---------------------------
 # Streamlit Configuration
 # ---------------------------
@@ -22,7 +19,7 @@ load_dotenv()
 # ---------------------------
 # UI
 # ---------------------------
-from ui.styles import apply_global_styles  
+from ui.styles import apply_global_styles
 
 # ✅ FIX 2 & 8: Check if new UI components exist, fallback to old
 try:
@@ -43,7 +40,6 @@ if USE_NEW_UI:
     from ui.styles import apply_global_styles
     apply_global_styles()
 else:
-    
     apply_global_styles()
 
 # ---------------------------
@@ -63,6 +59,18 @@ from core.forecast_engine import ForecastEngine
 from core.prompt_builder import PromptBuilder
 from core.session_manager import ChatEntry, SessionManager
 
+# ✅ NEW: Enterprise upload pipeline modules
+from core.upload_manager import UploadManager, UploadPipelineResult
+from core.excel_loader import get_excel_info
+from ui.upload_components import (
+    render_upload_area,
+    render_file_preview,
+    render_sheet_selector,
+    render_header_selector,
+    render_type_override,
+    render_upload_history,
+)
+
 # ------------------------------------------------------------------
 # Session state
 # ------------------------------------------------------------------
@@ -72,6 +80,11 @@ for key, default in {
     "session": None, "context": None,
     "business_schema": None, "loaded_dataset": None,
     "kpis": {},
+    "upload_history": {},          # ✅ Feature 3: Upload History cache
+    "upload_preview": None,        # ✅ Feature 4: File preview state
+    "upload_excel_info": None,     # ✅ Feature 1: Excel sheet info
+    "upload_header_row": None,     # ✅ Feature 6: Header row state
+    "upload_overrides": {},        # ✅ Feature 5: Type overrides state
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -82,62 +95,56 @@ if st.session_state.context is None:
     st.session_state.context = ConversationContext()
 
 # ------------------------------------------------------------------
-# KPI computation
+# KPI computation (kept for backward compatibility)
 # ------------------------------------------------------------------
 
 def compute_kpis(df: pd.DataFrame, schema) -> dict:
     """
     Compute KPIs dynamically based on available columns.
-    ✅ FIX 5: Generic column detection instead of hardcoded names.
     """
     kpis = {}
     try:
-        # Find numeric columns that look like measures
         numeric_cols = df.select_dtypes(include="number").columns.tolist()
-        
-        # Total of first numeric column (usually Sales/Revenue)
+
         if numeric_cols:
             first_num = numeric_cols[0]
             kpis[f"Total {first_num}"] = f"${df[first_num].sum():,.0f}"
-            
-            # Second numeric column (usually Profit)
+
             if len(numeric_cols) > 1:
                 second_num = numeric_cols[1]
                 kpis[f"Total {second_num}"] = f"${df[second_num].sum():,.0f}"
-        
-        # Count unique IDs if any ID-like column exists
+
         id_cols = [c for c in df.columns if any(kw in c.lower() for kw in ["id", "key", "code"])]
         if id_cols:
             kpis["Records"] = f"{df[id_cols[0]].nunique():,}"
-        
-        # Count unique names if exists
+
         name_cols = [c for c in df.columns if "name" in c.lower()]
         if name_cols:
             kpis["Unique Names"] = f"{df[name_cols[0]].nunique():,}"
-        
-        # Top region/category if dimensions exist
+
         categorical_cols = df.select_dtypes(include="object").columns.tolist()
         if categorical_cols and numeric_cols:
             top_dim = categorical_cols[0]
             top_num = numeric_cols[0]
             top = df.groupby(top_dim)[top_num].sum().idxmax()
             kpis[f"Top {top_dim}"] = top
-            
+
             if len(categorical_cols) > 1:
                 second_dim = categorical_cols[1]
                 top2 = df.groupby(second_dim)[top_num].sum().idxmax()
                 kpis[f"Top {second_dim}"] = top2
-                
+
     except Exception as e:
         st.warning(f"KPI computation skipped: {e}")
     return kpis
 
-# ------------------------------------------------------------------
-# Sidebar
-# ------------------------------------------------------------------
+
+# ==================================================================
+# SIDEBAR — Dataset Selection & Upload (ALL 10 FEATURES)
+# ==================================================================
 
 with st.sidebar:
-    # ✅ FIX 2: Fallback for old UI
+    # ---------------- Logo ----------------
     if USE_NEW_UI:
         st.markdown("""
             <div style="padding:1.25rem 0 1.25rem 0;border-bottom:1px solid #1F2937;
@@ -165,47 +172,227 @@ with st.sidebar:
             </div>
         """, unsafe_allow_html=True)
 
-    registry = DatasetRegistry()
-    available_datasets = registry.list_datasets()
-
+    # ================================================================
+    # SECTION: Choose Dataset
+    # ================================================================
     if USE_NEW_UI:
-        render_section_label("Dataset")
+        render_section_label("Choose Dataset")
     else:
-        st.markdown('<div class="section-label">Dataset</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-label">Choose Dataset</div>', unsafe_allow_html=True)
 
-    if not available_datasets:
-        st.warning("No datasets in data/ folder.")
+    # ---------------- Tab-like selection ----------------
+    dataset_source = st.radio(
+        "Dataset Source",
+        options=["📁 Existing Project Dataset", "⬆️ Upload New Dataset"],
+        index=0,
+        label_visibility="collapsed",
+        help="Select an existing dataset from the project folder or upload a new one from your computer.",
+    )
+
+    use_existing = dataset_source.startswith("📁")
+
+    # ================================================================
+    # WORKFLOW A: Existing Project Dataset (UNCHANGED BEHAVIOR)
+    # ================================================================
+    if use_existing:
+        registry = DatasetRegistry()
+        available_datasets = registry.list_datasets()
+
+        if not available_datasets:
+            st.warning("No datasets found in the data/ folder.")
+        else:
+            selected = st.selectbox(
+                "Select dataset",
+                options=available_datasets,
+                index=0,
+                label_visibility="collapsed",
+            )
+            load_btn = st.button("Load Dataset", use_container_width=True)
+            auto_load = st.session_state.df is None and not st.session_state.get("upload_history")
+
+            if load_btn or auto_load:
+                with st.status("Loading dataset...", expanded=False) as status:
+                    status.update(label="Reading file...")
+                    result = registry.load(selected)
+                    success, data = result
+
+                    if not success:
+                        status.update(label="Failed", state="error")
+                        st.error(data)
+                    else:
+                        status.update(label="Cleaning data...")
+                        df, _ = DataCleaner().clean(data)
+                        status.update(label="Profiling...")
+                        profile = DataProfiler().profile(df)
+                        status.update(label="Building business knowledge...")
+                        schema = BusinessKnowledgeBuilder().build(profile, selected)
+                        status.update(label="Computing KPIs...")
+                        kpis = compute_kpis(df, schema)
+
+                        st.session_state.df = df
+                        st.session_state.profile = profile
+                        st.session_state.session = SessionManager()
+                        st.session_state.context = ConversationContext()
+                        st.session_state.business_schema = schema
+                        st.session_state.loaded_dataset = selected
+                        st.session_state.kpis = kpis
+
+                        status.update(label=f"✅ Loaded: {selected}", state="complete")
+                        st.rerun()
+
+    # ================================================================
+    # WORKFLOW B: Upload New Dataset (ALL 10 FEATURES)
+    # ================================================================
     else:
-        selected = st.selectbox(
-            "dataset", options=available_datasets,
-            index=0, label_visibility="collapsed",
-        )
-        load_btn = st.button("Load Dataset", use_container_width=True)
-        auto_load = st.session_state.df is None
+        # ✅ Feature 2: Professional Drag & Drop Upload Area
+        uploaded_file = render_upload_area()
 
-        if load_btn or auto_load:
-            with st.spinner("Loading..."):
-                result = registry.load(selected)
-                success, data = result
-                if not success:
-                    st.error(data)
+        if uploaded_file is not None:
+            manager = UploadManager()
+
+            # ✅ Feature 9: Error Handling — validate first
+            ok, error, preview = manager.validate_file(uploaded_file)
+
+            if not ok:
+                st.error(f"❌ {error}")
+            else:
+                # ✅ Feature 4: File Preview Before Processing
+                render_file_preview(preview)
+                st.session_state.upload_preview = preview
+
+                # ✅ Feature 1: Excel Sheet Selector
+                sheet_name = None
+                if preview.extension in ("XLSX", "XLS"):
+                    excel_info = get_excel_info(uploaded_file)
+                    if excel_info.password_protected:
+                        st.error("❌ Password-protected Excel. Please remove the password and retry.")
+                        st.stop()
+                    if excel_info.error:
+                        st.error(f"❌ {excel_info.error}")
+                        st.stop()
+
+                    # Only show selector if multiple sheets
+                    if len(excel_info.sheet_names) > 1:
+                        sheet_name = render_sheet_selector(excel_info)
+                    else:
+                        sheet_name = excel_info.selected_sheet
+
+                    st.session_state.upload_excel_info = excel_info
+
+                # ✅ Feature 6: Automatic Header Row Detection
+                ok_raw, df_raw, error_raw = manager.load_raw(
+                    uploaded_file, header_row=0, sheet_name=sheet_name
+                )
+                if not ok_raw:
+                    st.error(f"❌ {error_raw}")
                 else:
-                    df, _ = DataCleaner().clean(data)
-                    profile = DataProfiler().profile(df)
-                    schema = BusinessKnowledgeBuilder().build(profile, selected)
-                    st.session_state.df = df
-                    st.session_state.profile = profile
-                    st.session_state.session = SessionManager()
-                    st.session_state.context = ConversationContext()
-                    st.session_state.business_schema = schema
-                    st.session_state.loaded_dataset = selected
-                    st.session_state.kpis = compute_kpis(df, schema)
+                    detected_header = manager.detect_header(df_raw)
+
+                    # Allow manual override
+                    header_row = render_header_selector(detected_header)
+                    st.session_state.upload_header_row = header_row
+
+                    # Load with chosen header for type detection
+                    ok_load, df_loaded, error_load = manager.load_raw(
+                        uploaded_file, header_row=header_row, sheet_name=sheet_name
+                    )
+                    if not ok_load:
+                        st.error(f"❌ {error_load}")
+                    else:
+                        # Quick profile to show detected types
+                        quick_profile = DataProfiler().profile(df_loaded)
+
+                        # ✅ Feature 5: Column Type Override
+                        overrides = render_type_override(quick_profile)
+                        st.session_state.upload_overrides = overrides
+
+                        # ✅ Feature 8: Progress Feedback via st.status
+                        if st.button("🚀 Process Dataset", use_container_width=True, key="process_upload"):
+                            with st.status("Processing dataset...", expanded=True) as status:
+                                try:
+                                    # Apply overrides
+                                    if overrides:
+                                        status.update(label="Detecting column types...")
+                                        df_loaded, type_errors = manager.apply_overrides(df_loaded, overrides)
+                                        if type_errors:
+                                            for err in type_errors:
+                                                st.warning(f"⚠️ {err}")
+
+                                    status.update(label="Cleaning dataset...")
+                                    df_clean, clean_report = DataCleaner().clean(df_loaded)
+
+                                    status.update(label="Profiling dataset...")
+                                    profile = DataProfiler().profile(df_clean)
+
+                                    status.update(label="Generating business knowledge...")
+                                    schema = BusinessKnowledgeBuilder().build(profile, preview.filename)
+
+                                    status.update(label="Preparing KPIs...")
+                                    kpis = compute_kpis(df_clean, schema)
+
+                                    status.update(label="Ready ✓", state="complete")
+
+                                    # ✅ Feature 7: Upload Pipeline — store in session state
+                                    st.session_state.df = df_clean
+                                    st.session_state.profile = profile
+                                    st.session_state.session = SessionManager()
+                                    st.session_state.context = ConversationContext()
+                                    st.session_state.business_schema = schema
+                                    st.session_state.loaded_dataset = preview.filename
+                                    st.session_state.kpis = kpis
+
+                                    # ✅ Feature 3: Upload History Cache
+                                    st.session_state.upload_history[preview.filename] = {
+                                        "df": df_clean,
+                                        "profile": profile,
+                                        "schema": schema,
+                                        "kpis": kpis,
+                                        "metadata": {
+                                            "filename": preview.filename,
+                                            "size_bytes": preview.size_bytes,
+                                            "extension": preview.extension,
+                                            "sheet_name": sheet_name,
+                                            "header_row": header_row,
+                                            "overrides": overrides,
+                                            "clean_report": clean_report,
+                                        },
+                                    }
+
+                                    st.success(f"✅ **{preview.filename}** loaded successfully!")
+                                    st.rerun()
+
+                                except Exception as e:
+                                    status.update(label="Error", state="error")
+                                    st.error(f"Processing failed: {e}")
+
+        # ✅ Feature 3: Upload History Dropdown
+        if st.session_state.get("upload_history"):
+            selected_history = render_upload_history(st.session_state.upload_history)
+            if selected_history and st.button("↻ Switch to Selected", use_container_width=True, key="switch_history"):
+                entry = st.session_state.upload_history[selected_history]
+                st.session_state.df = entry["df"]
+                st.session_state.profile = entry["profile"]
+                st.session_state.session = SessionManager()
+                st.session_state.context = ConversationContext()
+                st.session_state.business_schema = entry["schema"]
+                st.session_state.loaded_dataset = selected_history
+                st.session_state.kpis = entry["kpis"]
+                st.rerun()
+
+        # Show supported formats hint
+        st.caption(
+            "Supported: **CSV**, **Excel (.xlsx)**, **Excel (.xls)** | "
+            "Max: **50 MB**"
+        )
 
     st.divider()
 
+    # ================================================================
+    # DATASET INFO PANEL (shared by both workflows)
+    # ================================================================
     if st.session_state.df is not None:
         p = st.session_state.profile
-        
+
         if USE_NEW_UI:
             render_section_label("Dataset Info")
             render_sidebar_metric("File", st.session_state.loaded_dataset)
@@ -231,24 +418,24 @@ with st.sidebar:
         schema = st.session_state.business_schema
         if schema:
             st.divider()
-            
+
             if USE_NEW_UI:
                 render_section_label("Key Metrics")
             else:
                 st.markdown('<div class="section-label">Key Metrics</div>', unsafe_allow_html=True)
-                
+
             for kpi in schema.kpi_columns[:4]:
                 st.markdown(
                     f"<div style='padding:0.25rem 0;font-size:0.78rem;"
                     f"color:#D1FAE5;'>▸ {kpi}</div>",
                     unsafe_allow_html=True
                 )
-            
+
             if USE_NEW_UI:
-                render_section_label("Dimensions", margin_top="0.75rem")  # ✅ FIX 3: Extra param
+                render_section_label("Dimensions", margin_top="0.75rem")
             else:
                 st.markdown('<div class="section-label" style="margin-top:1rem;">Dimensions</div>', unsafe_allow_html=True)
-                
+
             for dim in schema.dimensions[:5]:
                 st.markdown(
                     f"<div style='padding:0.2rem 0;font-size:0.73rem;"
@@ -294,7 +481,7 @@ if st.session_state.df is None:
                 <div style="font-size:2rem;margin-bottom:1rem;">⬡</div>
                 <div style="font-size:1.1rem;font-weight:600;color:#111827;
                             margin-bottom:0.5rem;">No dataset loaded</div>
-                <div style="font-size:0.9rem;">Select a dataset from the sidebar and click Load Dataset</div>
+                <div style="font-size:0.9rem;">Select a dataset from the sidebar or upload a new one</div>
             </div>
         """, unsafe_allow_html=True)
     st.stop()
@@ -421,7 +608,7 @@ if question:
         st.write(question)
 
     with st.chat_message("assistant"):
-        status = st.status("Processing...")  # ✅ FIX 6: Remove expanded=False if deprecated
+        status = st.status("Processing...")
         try:
             profile = st.session_state.profile
             df = st.session_state.df
@@ -465,8 +652,6 @@ if question:
             status.update(label="Building visualisation...")
             figure = ChartEngine().render(result, plan_or_error.visualization)
             if figure:
-                # ✅ FIX 7: Don't override ChartEngine theme — let it handle styling
-                # Or if you want white theme, set it in ChartEngine, not here
                 st.plotly_chart(figure, use_container_width=True)
 
             with st.expander("View Data Table"):
