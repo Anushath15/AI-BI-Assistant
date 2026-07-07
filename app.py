@@ -104,35 +104,36 @@ def compute_kpis(df: pd.DataFrame, schema) -> dict:
     """
     kpis = {}
     try:
-        numeric_cols = df.select_dtypes(include="number").columns.tolist()
+        # Use BusinessSchema KPIs — not raw numeric columns
+        if schema and schema.kpi_columns:
+            for col in schema.kpi_columns[:2]:
+                if col in df.columns:
+                    kpis[f"Total {col}"] = f"${df[col].sum():,.0f}"
 
-        if numeric_cols:
-            first_num = numeric_cols[0]
-            kpis[f"Total {first_num}"] = f"${df[first_num].sum():,.0f}"
-
-            if len(numeric_cols) > 1:
-                second_num = numeric_cols[1]
-                kpis[f"Total {second_num}"] = f"${df[second_num].sum():,.0f}"
-
-        id_cols = [c for c in df.columns if any(kw in c.lower() for kw in ["id", "key", "code"])]
+        # Records from first ID column
+        id_cols = [c for c in df.columns if any(k in c.lower() for k in ["id", "key", "code"])]
         if id_cols:
             kpis["Records"] = f"{df[id_cols[0]].nunique():,}"
 
-        name_cols = [c for c in df.columns if "name" in c.lower()]
+        # Unique customers/names
+        name_cols = [c for c in df.columns if "name" in c.lower() and "product" not in c.lower()]
         if name_cols:
             kpis["Unique Names"] = f"{df[name_cols[0]].nunique():,}"
 
-        categorical_cols = df.select_dtypes(include="object").columns.tolist()
-        if categorical_cols and numeric_cols:
-            top_dim = categorical_cols[0]
-            top_num = numeric_cols[0]
-            top = df.groupby(top_dim)[top_num].sum().idxmax()
-            kpis[f"Top {top_dim}"] = top
-
-            if len(categorical_cols) > 1:
-                second_dim = categorical_cols[1]
-                top2 = df.groupby(second_dim)[top_num].sum().idxmax()
-                kpis[f"Top {second_dim}"] = top2
+        # Top dimension — use schema dimensions, skip IDs
+        if schema and schema.dimensions and schema.kpi_columns:
+            clean_dims = [
+                d for d in schema.dimensions
+                if not any(k in d.lower() for k in ["id", "key", "code", "date"])
+            ]
+            if clean_dims and schema.kpi_columns:
+                kpis[f"Top {clean_dims[0]}"] = (
+                    df.groupby(clean_dims[0])[schema.kpi_columns[0]].sum().idxmax()
+                )
+            if len(clean_dims) > 1 and schema.kpi_columns:
+                kpis[f"Top {clean_dims[1]}"] = (
+                    df.groupby(clean_dims[1])[schema.kpi_columns[0]].sum().idxmax()
+                )
 
     except Exception as e:
         st.warning(f"KPI computation skipped: {e}")
