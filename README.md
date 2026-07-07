@@ -1,4 +1,4 @@
-﻿# 🧠 AI BI Assistant
+# 🧠 AI BI Assistant
 ### Enterprise AI Business Intelligence Platform
 
 <div align="center">
