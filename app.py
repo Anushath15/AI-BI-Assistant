@@ -104,39 +104,46 @@ def compute_kpis(df: pd.DataFrame, schema) -> dict:
     """
     kpis = {}
     try:
-        # Use BusinessSchema KPIs — not raw numeric columns
+        # Use BusinessSchema KPIs — already filtered by BusinessKnowledgeBuilder
         if schema and schema.kpi_columns:
             for col in schema.kpi_columns[:2]:
                 if col in df.columns:
                     kpis[f"Total {col}"] = f"${df[col].sum():,.0f}"
 
-        # Records from first ID column
-        id_cols = [c for c in df.columns if any(k in c.lower() for k in ["id", "key", "code"])]
+        # Records from first ID-like column
+        id_cols = [
+            c for c in df.columns
+            if any(k in c.lower() for k in ["id", "key", "code"])
+        ]
         if id_cols:
             kpis["Records"] = f"{df[id_cols[0]].nunique():,}"
 
-        # Unique customers/names
-        name_cols = [c for c in df.columns if "name" in c.lower() and "product" not in c.lower()]
+        # Unique customer/person names — skip product names
+        name_cols = [
+            c for c in df.columns
+            if "name" in c.lower() and "product" not in c.lower()
+        ]
         if name_cols:
             kpis["Unique Names"] = f"{df[name_cols[0]].nunique():,}"
 
-        # Top dimension — use schema dimensions, skip IDs
+        # Top dimension — exclude ID, date, and code columns
         if schema and schema.dimensions and schema.kpi_columns:
             clean_dims = [
                 d for d in schema.dimensions
                 if not any(k in d.lower() for k in ["id", "key", "code", "date"])
             ]
-            if clean_dims and schema.kpi_columns:
+            if clean_dims:
                 kpis[f"Top {clean_dims[0]}"] = (
-                    df.groupby(clean_dims[0])[schema.kpi_columns[0]].sum().idxmax()
+                    df.groupby(clean_dims[0])[schema.kpi_columns[0]]
+                    .sum().idxmax()
                 )
-            if len(clean_dims) > 1 and schema.kpi_columns:
+            if len(clean_dims) > 1:
                 kpis[f"Top {clean_dims[1]}"] = (
-                    df.groupby(clean_dims[1])[schema.kpi_columns[0]].sum().idxmax()
+                    df.groupby(clean_dims[1])[schema.kpi_columns[0]]
+                    .sum().idxmax()
                 )
-
-    except Exception as e:
-        st.warning(f"KPI computation skipped: {e}")
+    except Exception:
+        pass
     return kpis
 
 
@@ -540,7 +547,7 @@ def render_entry(entry: ChatEntry, index: int):
                 st.error(entry.error)
             return
         if entry.figure:
-            st.plotly_chart(entry.figure, use_container_width=True)
+            st.plotly_chart(entry.figure, use_container_width=True, key=f"hist_fig_{index}")
         if entry.data:
             with st.expander("View Data Table"):
                 st.dataframe(pd.DataFrame(entry.data), use_container_width=True)
@@ -551,7 +558,7 @@ def render_entry(entry: ChatEntry, index: int):
                 st.markdown(entry.explanation)
         if entry.is_time_series:
             if entry.forecast_figure:
-                st.plotly_chart(entry.forecast_figure, use_container_width=True)
+                st.plotly_chart(entry.forecast_figure, use_container_width=True, key=f"hist_forecast_{index}")
                 if entry.forecast_info:
                     st.caption(
                         f"ML Model: Linear Regression | "
@@ -616,7 +623,7 @@ if question:
             context = st.session_state.context
             business_schema = st.session_state.business_schema
 
-            status.update(label="Creating execution plan...")
+            status.update(label="Creating execution plan...", expanded=False)
             sp, up = PromptBuilder().build(
                 profile, question,
                 context_summary=context.get_context_summary(),
@@ -624,7 +631,7 @@ if question:
             )
             raw = AIClient().ask(sp, up)
 
-            status.update(label="Validating plan...")
+            status.update(label="Validating plan...", expanded=False)
             ok, plan_or_error = CommandValidator().validate(
                 raw, profile, original_question=question
             )
@@ -638,7 +645,7 @@ if question:
                     st.error(plan_or_error)
                 st.stop()
 
-            status.update(label="Running analysis...")
+            status.update(label="Running analysis...", expanded=False)
             result = AnalysisEngine().execute(df, plan_or_error, question)
             if not result.success:
                 status.update(label="Done", state="error")
@@ -650,22 +657,22 @@ if question:
                     st.error(result.error)
                 st.stop()
 
-            status.update(label="Building visualisation...")
+            status.update(label="Building visualisation...", expanded=False)
             figure = ChartEngine().render(result, plan_or_error.visualization)
             if figure:
-                st.plotly_chart(figure, use_container_width=True)
+                st.plotly_chart(figure, use_container_width=True, key=f"cur_fig_{len(st.session_state.session.get_history())}")
 
             with st.expander("View Data Table"):
                 st.dataframe(pd.DataFrame(result.data), use_container_width=True)
 
-            status.update(label="Generating insight...")
+            status.update(label="Generating insight...", expanded=False)
             explanation = ExplanationEngine().explain(result)
             if USE_NEW_UI:
                 render_insight_card(explanation)
             else:
                 st.markdown(explanation)
 
-            status.update(label="Done ✓", state="complete")
+            status.update(label="Done ✓", state="complete", expanded=False)
 
             is_time_series = any(
                 s.operation == "time_series" for s in plan_or_error.steps
