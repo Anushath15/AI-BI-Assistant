@@ -1,4 +1,4 @@
-﻿# 🧠 AI BI Assistant
+# 🧠 AI BI Assistant
 ### Enterprise AI Business Intelligence Platform
 
 <div align="center">
@@ -8,7 +8,7 @@
 ![Groq](https://img.shields.io/badge/LLM-Groq%20LLaMA%203.3%2070B-orange?style=flat-square)
 ![scikit-learn](https://img.shields.io/badge/ML-scikit--learn-yellow?style=flat-square&logo=scikitlearn)
 ![Pydantic](https://img.shields.io/badge/Contracts-Pydantic%20v2-green?style=flat-square)
-![Tests](https://img.shields.io/badge/Tests-39%20passing-brightgreen?style=flat-square)
+![Tests](https://img.shields.io/badge/Tests-128%20passing-brightgreen?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)
 
 **🚀 Live Demo:** https://ai-bi-assistant-ujl3vewuaeixr8jongabql.streamlit.app/
@@ -60,37 +60,34 @@ A Python engine executes the plan step by step using Pandas. The AI never touche
 - **Multi-step Analysis** — Filter, group, aggregate, sort, limit — all chained
 - **7 Chart Types** — Bar, line, pie, scatter, histogram, box, table
 - **Explainable Results** — AI generates business-language explanations
-- **39 Unit Tests** — Three test suites covering core modules
+- **128 Unit Tests** — Seven test suites covering core modules
 - **Production Deployed** — Live on Streamlit Cloud
 
 ---
 
 ## 🏗️ AI Architecture
-
-```
 User Question
-     │
-     ▼
+│
+▼
 PromptBuilder ──────────────── BusinessKnowledgeLayer
-     │                              (semantic schema)
-     │◄── ConversationContext ──── (follow-up memory)
-     │
-     ▼
+│                              (semantic schema)
+│◄── ConversationContext ──── (follow-up memory)
+│
+▼
 AIClient (Groq LLaMA 3.3 70B)
-     │
-     ▼
+│
+▼
 ExecutionPlan (JSON) ◄── CommandValidator (schema check)
-     │
-     ▼
+│
+▼
 AnalysisEngine (Pandas) ── ExecutionContext
-     │
-     ├── ChartEngine (Plotly)
-     ├── ForecastEngine (scikit-learn)
-     └── ExplanationEngine (Groq)
-     │
-     ▼
+│
+├── ChartEngine (Plotly)
+├── ForecastEngine (scikit-learn)
+└── ExplanationEngine (Groq)
+│
+▼
 Streamlit UI ← SessionManager (chat history)
-```
 
 ### Why This Architecture?
 
@@ -121,8 +118,6 @@ Streamlit UI ← SessionManager (chat history)
 ---
 
 ## 📁 Project Structure
-
-```
 AI BI Assistant/
 │
 ├── app.py                        # Streamlit chat interface
@@ -156,13 +151,14 @@ AI BI Assistant/
 │   └── logger.py                 # Centralized logging configuration
 │
 ├── tests/
+│   ├── conftest.py               # Shared fixtures and helpers
 │   ├── test_data_loader.py       # 20 tests for data ingestion
 │   ├── test_business_knowledge.py # 9 tests for semantic schema builder
-│   └── test_conversation_context.py # 10 tests for conversation memory
+│   ├── test_conversation_context.py # 10 tests for conversation memory
+│   └── test_command_validator.py # 60 tests for all validation stages
 │
 └── data/
-    └── samplesuperstore.csv      # Sample business dataset
-```
+└── samplesuperstore.csv      # Sample business dataset
 
 ---
 
@@ -189,9 +185,7 @@ pip install -r requirements.txt
 **4. Configure API key**
 
 Create `.env` in the project root:
-```
 GROQ_API_KEY=your_groq_api_key_here
-```
 
 Get a free key at https://console.groq.com
 
@@ -219,14 +213,11 @@ GROQ_API_KEY = "your_key_here"
 
 1. Launch the app and select a dataset from the sidebar
 2. Ask any business question in plain English:
-
-```
 What are the top 5 products by total sales?
 Which region has the highest profit margin?
 Show me monthly sales trend for 2023
 Which one performed worst?  ← follow-up question
 Now compare with 2022      ← conversational follow-up
-```
 
 3. View the chart, expand the data table, read the AI explanation
 4. For time series results, click **📈 Show 3-Month Forecast** for ML predictions
@@ -281,15 +272,13 @@ Now compare with 2022      ← conversational follow-up
 ```bash
 pytest tests/ -v
 ```
-
-```
-39 passed in 3.23s
-```
+128 passed, 2 xfailed
 
 Test coverage includes:
 - Data ingestion (20 tests) — encoding, size limits, binary detection
 - Business Knowledge Layer (9 tests) — KPI detection, dimension classification
 - Conversation Context (10 tests) — filter accumulation, rolling window, clear
+- Command Validator (60 tests) — 7 groups covering all validation pipeline stages
 
 ---
 
